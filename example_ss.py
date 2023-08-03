@@ -59,5 +59,5 @@ data['ref_class'] = list_ref
 data['pred_prob'] = list_prob
 data['list_values'] = [1]
 pe = PE(data, 'Semantic Segmentation',measures_overlap=['fbeta'],measures_boundary=['nsd'],case=True)
-
+ 
 print(pe.resseg)

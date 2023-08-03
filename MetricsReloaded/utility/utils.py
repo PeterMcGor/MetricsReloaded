@@ -99,7 +99,7 @@ class MorphologyOps(object):
 
     def __init__(self, binary_img, connectivity):
         self.binary_map = np.asarray(binary_img, dtype=np.int8)
-        self.connectivity = connectivity
+        self.connectivity = connectivity # this implementation does not use the connectivity
 
     def border_map(self):
         """
@@ -130,7 +130,7 @@ class MorphologyOps(object):
     def foreground_component(self):
         return ndimage.label(self.binary_map)
 
-    def list_foreground_component(self):
+    def list_foreground_component(self, include_volumes = True, include_center_of_mass = True):
         labels, _ = self.foreground_component()
         list_ind_lab = []
         list_volumes = []
@@ -139,11 +139,13 @@ class MorphologyOps(object):
         for f in list_values:
             if f > 0:
                 tmp_lab = np.where(
-                    labels == f, np.ones_like(labels), np.zeros_like(labels)
+                    labels == f, np.ones_like(labels), np.zeros_like(labels) # There is no need to generate the whoel matrix. 0,1 would be enough
                 )
                 list_ind_lab.append(tmp_lab)
-                list_volumes.append(np.sum(tmp_lab))
-                list_com.append(ndimage.center_of_mass(tmp_lab))
+                if include_volumes:
+                    list_volumes.append(np.sum(tmp_lab))
+                if include_center_of_mass:
+                    list_com.append(ndimage.center_of_mass(tmp_lab))
         return list_ind_lab, list_volumes, list_com
 
 def intersection_boxes(box1, box2):
@@ -168,7 +170,6 @@ def guess_input_style(a):
     Given an array a, guess whether it represents a mask, a box or a centre of mass
 
     """
-    print(a.ndim)
     if a.ndim > 1:
         return 'mask'
     else:
@@ -203,7 +204,7 @@ def point_in_mask(point, mask):
     else:
         new_mask[point[0],point[1],point[2]] = 1
     overlap = np.multiply(new_mask, mask)
-    print(point, new_mask, overlap, 'sum_overlap ', np.sum(overlap))
+  
     if np.sum(overlap) > 0:
         return 1
     else:
@@ -298,7 +299,8 @@ def max_x_at_y_more(x, y, cut_off):
     x = np.asarray(x)
     y = np.asarray(y)    
     ix = np.where(y >= cut_off)
-    return np.max(x[ix])
+   
+    return np.max(x[ix]) if len(ix[0]) > 0 else np.nan
 
 def max_x_at_y_less(x, y, cut_off):
     """Gets max of elements in x where elements 
@@ -307,7 +309,8 @@ def max_x_at_y_less(x, y, cut_off):
     x = np.asarray(x)
     y = np.asarray(y)    
     ix = np.where(y <= cut_off)
-    return np.max(x[ix])
+    #print("max_x_at_y_les", ix)
+    return np.max(x[ix]) if len(ix[0]) > 0 else np.nan
 
 def min_x_at_y_less(x, y, cut_off):
     """Gets min of elements in x where elements 
@@ -319,7 +322,7 @@ def min_x_at_y_less(x, y, cut_off):
     x = np.asarray(x)
     y = np.asarray(y)    
     ix = np.where(y <= cut_off)
-    return np.min(x[ix])
+    return np.min(x[ix]) if len(ix[0]) > 0 else np.nan
 
 def min_x_at_y_more(x,y,cut_off):
     """Gets min of elements in x where elements in 
@@ -331,7 +334,7 @@ def min_x_at_y_more(x,y,cut_off):
     x = np.asarray(x)
     y = np.asarray(y)    
     ix = np.where(y >= cut_off)
-    return np.min(x[ix])
+    return np.min(x[ix]) if len(ix[0]) > 0 else np.nan
 
 def one_hot_encode(img, n_classes):
     """One-hot encodes categorical image
@@ -406,7 +409,7 @@ def to_dict_meas_(measures, measures_dict, fmt="{:.4f}"):
 
 def combine_df(df1,df2):
     if df1 is None or df1.shape[0]==0:
-        print('Nothing in first')
+        #print('Nothing in first')
         if df2 is None:
             return None
         elif df2.shape[0] == 0:
@@ -416,7 +419,7 @@ def combine_df(df1,df2):
     elif df2 is None or df2.shape[0]==0:
         return df1
     else:
-        print("Performing concatenation")
+        #print("Performing concatenation")
         return pd.concat([df1, df2])
 
 def merge_list_df(list_df, on=['label','case']):
@@ -429,13 +432,13 @@ def merge_list_df(list_df, on=['label','case']):
                     flag_on = False
             if flag_on:
                 list_fin.append(k)
-            print(flag_on)
+            #print(flag_on)
     if len(list_fin) == 0:
         return None
     elif len(list_fin) == 1:
         return list_fin[0]
     else:
-        print("list fin is ",list_fin)
+        #print("list fin is ",list_fin)
         df_fin = list_fin[0]
         for k in list_fin[1:]:
             df_fin = pd.merge(df_fin, k, on=on)

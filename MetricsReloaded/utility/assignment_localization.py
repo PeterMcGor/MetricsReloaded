@@ -148,8 +148,8 @@ class AssignmentMapping(object):
         if self.pred_loc.shape[0] > 0:
             input_pred = guess_input_style(self.pred_loc[0,...])
         else:
-            return flag_usable, flag_refmod, flag_predmod
-        print(input_ref, input_pred)
+            return flag_usable, flag_refmod, flag_predmod 
+      
         if self.localization == 'box_com':
             if input_ref == 'box':
                 flag_refmod = True
@@ -310,13 +310,13 @@ class AssignmentMapping(object):
         """
         ref_box = self.ref_loc
         pred_box = self.pred_loc
-        print(self.flag_refmod, self.flag_predmod)
+        #print(self.flag_refmod, self.flag_predmod)
         if self.flag_refmod:
             ref_box = self.ref_loc_mod
         
         if self.flag_predmod:
             pred_box = self.pred_loc_mod
-        print(ref_box, pred_box)
+        #print(ref_box, pred_box)
         matrix_iou = np.zeros([pred_box.shape[0], ref_box.shape[0]])
         for (pi, pb) in enumerate(pred_box):
             for (ri, rb) in enumerate(ref_box):
@@ -333,7 +333,7 @@ class AssignmentMapping(object):
             for r in range(self.ref_loc.shape[0]):
                 PM = BinaryPairwiseMeasures(self.pred_loc[p, ...], self.ref_loc[r, ...])
                 matrix_ior[p, r] = PM.intersection_over_reference()
-        print("Matrix ior ", matrix_ior)
+        #print("Matrix ior ", matrix_ior)
         return matrix_ior
 
     def pairwise_boundaryiou(self):
@@ -346,7 +346,7 @@ class AssignmentMapping(object):
             for r in range(self.ref_loc.shape[0]):
                 PM = BinaryPairwiseMeasures(self.pred_loc[p,...], self.ref_loc[r,...])
                 matrix_biou[p,r] = PM.boundary_iou()
-        print("Matrix Boundary IoU", matrix_biou)
+        #print("Matrix Boundary IoU", matrix_biou)
         return matrix_biou
 
     def pairwise_maskcom(self):
@@ -359,7 +359,7 @@ class AssignmentMapping(object):
             for r in range(self.ref_loc.shape[0]):
                 PM = BinaryPairwiseMeasures(self.pred_loc[p, ...], self.ref_loc[r, ...])
                 matrix_com[p, r] = PM.com_dist()
-        print("Matrix com ", matrix_com)
+        #print("Matrix com ", matrix_com)
         return matrix_com
 
     def pairwise_maskiou(self):
@@ -368,7 +368,6 @@ class AssignmentMapping(object):
         indicating the pairwise mask iou.
         """
         matrix_iou = np.zeros([self.pred_loc.shape[0], self.ref_loc.shape[0]])
-        print(matrix_iou.shape, self.pred_loc.shape, self.ref_loc.shape)
         for p in range(self.pred_loc.shape[0]):
             for r in range(self.ref_loc.shape[0]):
                 PM = BinaryPairwiseMeasures(self.pred_loc[p, ...], self.ref_loc[r, ...])
@@ -412,7 +411,6 @@ class AssignmentMapping(object):
         list_valid = []
         list_matching = []
         list_notexist = []
-        print(possible_binary.shape)
         for f in range(possible_binary.shape[0]):
             ind_possible = np.where(possible_binary[f, :] == 1)
             if len(ind_possible[0]) == 0:
@@ -483,12 +481,14 @@ class AssignmentMapping(object):
         """
         matrix = self.matrix
         df_matching, df_fn, df_fp, list_valid = self.initial_mapping()
+        """"
         print(
             "Number of categories: TP FN FP",
             df_matching.shape,
             df_fn.shape,
             df_fp.shape,
         )
+        """
         df_ambiguous_ref = None
         if df_matching.shape[0] > 0:
             df_matching["count_pred"] = df_matching.groupby("ref")["pred"].transform(
@@ -508,7 +508,7 @@ class AssignmentMapping(object):
             or df_ambiguous_ref.shape[0] == 0
             and df_ambiguous_seg.shape[0] == 0
         ):
-            print("No ambiguity in matching")
+            #print("No ambiguity in matching")
             df_matching_all = pd.concat([df_matching, df_fp, df_fn])
             return df_matching_all, list_valid
         else:
@@ -599,7 +599,7 @@ class AssignmentMapping(object):
         list_fp = []
         list_fn = []
         for r in range(df_tp.shape[0]):
-            print(df_tp.iloc[r]["pred"])
+            #print(df_tp.iloc[r]["pred"])
             list_pred.append(self.pred_loc[int(df_tp.iloc[r]["pred"]), ...])
             list_ref.append(self.ref_loc[int(df_tp.iloc[r]["ref"]), ...])
         for r in range(df_fp.shape[0]):

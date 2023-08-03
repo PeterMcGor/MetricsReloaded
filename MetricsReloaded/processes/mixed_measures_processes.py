@@ -61,6 +61,7 @@ import nibabel as nib
 import os
 import warnings
 
+from typing import List, Dict, Union
 
 __all__ = [
     "MixedLocSegPairwiseMeasure",
@@ -73,11 +74,11 @@ __all__ = [
 class MixedLocSegPairwiseMeasure(object):
     def __init__(
         self,
-        pred,
-        ref,
-        list_predimg,
-        list_refimg,
-        pred_prob,
+        pred, # Here just the prediction per blob/case o su vieja, No the images
+        ref, # The same. No arrays in lists or shit
+        list_predimg, # here the lists
+        list_refimg, 
+        pred_prob, # here the probaility per blob
         measures_overlap=[],
         measures_boundary=[],
         measures_mt=[],
@@ -97,12 +98,12 @@ class MixedLocSegPairwiseMeasure(object):
         self.measures_det = measures_pcc
         self.measures_seg = measures_boundary + measures_overlap
         self.dict_args = dict_args
-        self.prob_res = ProbabilityPairwiseMeasures(
-            pred_prob, ref, self.measures_mt, self.dict_args
-        )
-        self.det_res = BinaryPairwiseMeasures(
-            pred, ref, self.measures_det, dict_args=self.dict_args
-        )
+        #print("----PRED PROD in PREVIPUS ProbabilityPairwiseMeasures---", pred_prob, ref, type(ref))
+        self.prob_res = ProbabilityPairwiseMeasures(pred_prob, ref, measures = self.measures_mt, dict_args=self.dict_args)
+        #print('--------self.prob_res-----------')
+        #print(self.prob_res, self.prob_res.case)
+        #print("----PRED PROD in ProbabilityPairwiseMeasures---", self.prob_res.pred)
+        self.det_res = BinaryPairwiseMeasures(pred, ref, self.measures_det, dict_args=self.dict_args)
         self.seg_res = [
             BinaryPairwiseMeasures(p, r, self.measures_seg, dict_args=self.dict_args)
             for (p, r) in zip(list_predimg, list_refimg)
@@ -116,7 +117,7 @@ class MixedLocSegPairwiseMeasure(object):
         for (p, r) in zip(self.predimg, self.refimg):
             PE = BinaryPairwiseMeasures(p, r)
             list_iou.append(PE.intersection_over_union())
-        print(list_iou, " is list iou")
+        #print(list_iou, " is list iou")
         return np.mean(np.asarray(list_iou))
 
     def detection_quality(self):
@@ -137,8 +138,8 @@ class MixedLocSegPairwiseMeasure(object):
 
         :return: PQ
         """
-        print("DQ ", self.detection_quality())
-        print("SQ ", self.segmentation_quality())
+        #print("DQ ", self.detection_quality())
+        #print("SQ ", self.segmentation_quality())
         DQ = self.detection_quality()
         SQ = self.segmentation_quality()
         if np.isnan(SQ):
@@ -147,12 +148,15 @@ class MixedLocSegPairwiseMeasure(object):
             else:
                 SQ = 1
                 # TODO modify to nan if this is the value adopted for empty situations
-        print("PQ is ", DQ * SQ, DQ, SQ)
+        #print("PQ is ", DQ * SQ, DQ, SQ)
         return DQ * SQ
 
     def to_dict_mt(self):
         dict_output = self.prob_res.to_dict_meas()
         return dict_output
+    
+    def all_multi_threshold_results(self):
+        return self.prob_res.all_multi_threshold_results()
 
     def to_dict_det(self):
         dict_output = self.det_res.to_dict_meas()
@@ -162,12 +166,14 @@ class MixedLocSegPairwiseMeasure(object):
 
     def to_pd_seg(self):
         list_res = []
+        # Each PS is a Pairwise measures object
         for ps in self.seg_res:
             dict_tmp = ps.to_dict_meas()
             list_res.append(dict_tmp)
         return pd.DataFrame.from_dict(list_res)
 
 
+#For some reason. Mainly to freely complicate things this function can take several volumes(cases) with nested blobs
 class MultiLabelLocSegPairwiseMeasure(object):
     """
     This class represents the processing for instance segmentation on true positive 
@@ -176,32 +182,31 @@ class MultiLabelLocSegPairwiseMeasure(object):
     
     def __init__(
         self,
-        pred_class,
-        ref_class,
-        pred_loc,
-        ref_loc,
-        pred_prob,
-        list_values,
-        names=[],
-        measures_pcc=[],
-        measures_overlap=[],
-        measures_boundary=[],
-        measures_detseg=[],
-        measures_mt=[],
-        per_case=True,
-        flag_map=True,
-        file=[],
-        connectivity=1,
-        pixdim=[1, 1, 1],
-        empty=False,
-        assignment="Greedy_IoU",
-        localization="iou",
-        thresh=0.5,
-        flag_fp_in=True,
-        dict_args={},
+        pred_class: List[List[int]],
+        ref_class: List[List[int]],
+        pred_loc: List[List[Union[int, float]]],
+        ref_loc: List[List[int]],
+        pred_prob: List[Union[List[float], None]],
+        list_values: List[int],
+        names: List[Union[str, int]] = [],
+        measures_pcc: List[str] = [],
+        measures_overlap: List[str] = [],
+        measures_boundary: List[str] = [],
+        measures_detseg: List[str] = [],
+        measures_mt: List[str] = [],
+        per_case: bool = True,
+        flag_map: bool = True,
+        file: List[str] = [],
+        connectivity: int = 1,
+        pixdim: List[Union[int, float]] = [1, 1, 1],
+        empty: bool = False,
+        assignment: str = "Greedy_IoU",
+        localization: str = "iou",
+        thresh: float = 0.5,
+        flag_fp_in: bool = True,
+        dict_args: Dict[str, any] = {},
     ):
-
-   
+    
         self.pred_loc = pred_loc
         self.list_values = list_values
         self.ref_class = ref_class
@@ -227,6 +232,7 @@ class MultiLabelLocSegPairwiseMeasure(object):
             self.names = self.file
         if len(self.names) < len(self.ref_loc):
             self.names = range(len(self.ref_loc))
+            #print("len(self.names) < len(self.ref_loc). len(self.pred_class)",len(self.names), len(self.ref_loc), len(self.pred_class))
         self.flag_valid_prob = True
         if pred_prob is None or pred_prob[0] is None:
             self.flag_valid_prob = False
@@ -241,26 +247,29 @@ class MultiLabelLocSegPairwiseMeasure(object):
         path, name = os.path.split(file_ref)
         name_new = category + "_" + name
         name_fin = path + os.path.sep + name_new
-        print(name_fin)
+        #print(name_fin)
         nib.save(nib_img, name_fin)
 
     def per_label_dict(self):
         list_det = []
         list_seg = []
         list_mt = []
-        #print(self.list_values)
-        for lab in self.list_values:
+        res_mt_complete = None
+        for lab in self.list_values: #Here refers to the labels in the GT. I guess
+            #print("Label", lab)
             list_pred = []
             list_ref = []
             list_prob = []
             list_pred_loc = []
             list_ref_loc = []
             for (case, name) in zip(range(len(self.pred_class)), self.names):
+                #print("Case", case, "Name", name)
                 #print(self.pred_prob[case], self.pred_prob[case].shape)
                 pred_class_case = np.asarray(self.pred_class[case])
                 ref_class_case = np.asarray(self.ref_class[case])
-                ind_pred = np.where(pred_class_case == lab)
-                #print(ind_pred)
+                ind_pred = np.where(pred_class_case == lab)[0] # since we just need the indices where the condition is positive
+                #print("ind_pred",ind_pred)
+                """"
                 pred_tmp = np.where(
                     pred_class_case == lab,
                     np.ones_like(pred_class_case),
@@ -271,14 +280,21 @@ class MultiLabelLocSegPairwiseMeasure(object):
                     np.ones_like(ref_class_case),
                     np.zeros_like(ref_class_case),
                 )
-                ind_ref = np.where(ref_class_case == lab)
-                pred_loc_tmp = [self.pred_loc[case][i] for i in ind_pred[0]]
-                ref_loc_tmp = [self.ref_loc[case][i] for i in ind_ref[0]]
+                """
+                ind_ref = np.where(ref_class_case == lab)[0]
+                
+                # Filter to have just the blobs that have the same predicted/reference label
+                pred_loc_tmp = [self.pred_loc[case][i] for i in ind_pred]
+                ref_loc_tmp = [self.ref_loc[case][i] for i in ind_ref]
+                #print("TMPS",lab,ind_pred[0],len(self.pred_loc[case]),pred_loc_tmp, ref_loc_tmp)
                 if self.flag_valid_prob:
-                    pred_prob_tmp = [self.pred_prob[case][i, lab] for i in ind_pred[0]]
+                    #print("self.pred_prob[case]", type(self.pred_prob[case]), self.pred_prob[case])
+                    #pred_prob_tmp = [self.pred_prob[case][i, lab] for i in ind_pred]
+                    pred_prob_tmp = [self.pred_prob[case][i] for i in ind_pred]
+                    #print("pred_prob_tmp for label and each predicted blob",lab, pred_prob_tmp)
                 else:
                     pred_prob_tmp = None
-                #print(len(pred_loc_tmp), len(ref_loc_tmp), lab, case)
+                #print("pred_prob_tmp", pred_prob_tmp)
                 AS = AssignmentMapping(
                     pred_loc=pred_loc_tmp,
                     ref_loc=ref_loc_tmp,
@@ -290,30 +306,26 @@ class MultiLabelLocSegPairwiseMeasure(object):
                 )
 
                 pred_tmp_fin = np.asarray(AS.df_matching["pred"])
-                pred_tmp_fin = np.where(
-                    pred_tmp_fin > -1,
-                    np.ones_like(pred_tmp_fin),
-                    np.zeros_like(pred_tmp_fin),
-                )
+                pred_tmp_fin = np.where(pred_tmp_fin > -1, np.ones_like(pred_tmp_fin),np.zeros_like(pred_tmp_fin))
+
                 ref_tmp_fin = np.asarray(AS.df_matching["ref"])
                 pred_prob_fin = np.asarray(AS.df_matching["pred_prob"])
-                ref_tmp_fin = np.where(
-                    ref_tmp_fin > -1,
-                    np.ones_like(ref_tmp_fin),
-                    np.zeros_like(ref_tmp_fin),
-                )
+                ref_tmp_fin = np.where(ref_tmp_fin > -1,np.ones_like(ref_tmp_fin),np.zeros_like(ref_tmp_fin))
+                #print("PRED PROB FIN FIRST", pred_prob_fin, pred_tmp_fin, ref_tmp_fin) 
+                # the pred/ref_tmp_fin are the boolean vectors eich establish coinicdence among pred and ref (1) or not (0). 
+                # So the len() would be the sum of coincidences (TP) plus the FP and FN
                 (
-                    pred_loc_tmp_fin,
-                    ref_loc_tmp_fin,
-                    pred_fp_loc,
-                    ref_fn_loc,
+                    pred_loc_tmp_fin, #TP detection
+                    ref_loc_tmp_fin,  #The correspondinf TP in the ref
+                    pred_fp_loc,      # FP, so predictions not real
+                    ref_fn_loc,       # FN, so in the ref. lession not identified
                 ) = AS.matching_ref_predseg()
                 if self.flag_map and len(self.file) == len(self.pred_class):
                     self.create_map(pred_loc_tmp_fin, self.file[case], "TP_Pred")
                     self.create_map(ref_loc_tmp_fin, self.file[case], "TP_Ref")
                     self.create_map(pred_fp_loc, self.file[case], "FP")
                     self.create_map(ref_fn_loc, self.file[case], "FN")
-                print("assignment done")
+                #print("assignment done")
                 if self.per_case:
                     # pred_loc_tmp_fin = pred_loc_tmp[list_valid]
                     # list_ref_valid = list(df_matching[df_matching['seg'].isin(list_valid)]['ref'])
@@ -337,15 +349,20 @@ class MultiLabelLocSegPairwiseMeasure(object):
                         seg_res["label"] = lab
                         seg_res["case"] = name
                         list_seg.append(seg_res)
+                        
                     if len(self.measures_pcc) + len(self.measures_detseg)>0:
                         det_res = MLSPM.to_dict_det()
                         det_res["label"] = lab
                         det_res["case"] = name
                         list_det.append(det_res)
+                        
                     if len(self.measures_mt) > 0 :
                         mt_res = MLSPM.to_dict_mt()
+                        res_mt_complete = MLSPM.all_multi_threshold_results()
                         mt_res["label"] = lab
                         mt_res["case"] = name
+                        res_mt_complete["label"] = lab
+                        res_mt_complete["case"] = name
                         list_mt.append(mt_res)
                     df_matching = AS.df_matching
                     df_matching["case"] = name
@@ -360,7 +377,8 @@ class MultiLabelLocSegPairwiseMeasure(object):
                         list_pred.append(p)
                     for r in ref_tmp_fin:
                         list_ref.append(r)
-                    for p in pred_prob_tmp:
+                    #for p in pred_prob_tmp:
+                    for p in pred_prob_fin:
                         list_prob.append(p)
                     df_matching = AS.df_matching
                     df_matching["case"] = name
@@ -393,8 +411,11 @@ class MultiLabelLocSegPairwiseMeasure(object):
                     list_det.append(res_det)
                 if len(self.measures_mt) > 0:
                     res_mt = MLSPM.to_dict_mt()
+                    res_mt_complete = MLSPM.all_multi_threshold_results()
                     res_mt["label"] = lab
+                    res_mt_complete["label"] = lab
                     list_mt.append(res_mt)
+        #print("LIST MT", len(list_mt))
         self.matching = pd.concat(self.matching)
         if len(list_seg) == 0:
             df_seg = None
@@ -404,6 +425,7 @@ class MultiLabelLocSegPairwiseMeasure(object):
             df_seg,
             pd.DataFrame.from_dict(list_det),
             pd.DataFrame.from_dict(list_mt),
+            res_mt_complete
         )
 
 
@@ -481,6 +503,8 @@ class MultiLabelLocMeasures(object):
                     flag_fp_in=self.flag_fp_in
                 )
                 df_matching = AS.df_matching
+                #print("-----DF MATCHING-----")
+                #print(df_matching)
                 pred_tmp_fin = np.asarray(df_matching["pred"])
                 pred_tmp_fin = np.where(
                     pred_tmp_fin > -1,
@@ -596,7 +620,7 @@ class MultiLabelPairwiseMeasures(object):
         list_bin = []
         list_mt = []
         for lab in self.list_values:
-            print(lab, ' is treated label')
+            #print(lab, ' is treated label')
             list_pred = []
             list_ref = []
             list_prob = []

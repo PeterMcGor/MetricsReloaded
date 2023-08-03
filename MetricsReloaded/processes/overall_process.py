@@ -33,7 +33,8 @@ import warnings
 from MetricsReloaded.utility.utils import combine_df, merge_list_df
 import pandas as pd
 import numpy as np
-
+import glob
+glob
 __all__ = [
     "ProcessEvaluation",
 ]
@@ -61,9 +62,7 @@ dict_valid={
                     "numb_fp",
                     "numb_fn",
 ],
-    'InS': ['pq','fbeta','sens@spec','spec@sens','sens@ppv','ppv@sens',
-    'fppi@sens','sens@fppi','ap','froc','dsc','cldice','iou','hd','boundary_iou',
-    'masd','assd','nsd','hd_perc',"numb_ref",
+    'InS': ['pq','fbeta','sens@spec','spec@sens','sens@ppv','ppv@sens', 'fppi@sens','sens@fppi','ap','froc','dsc','cldice','iou','hd','boundary_iou','masd','assd','nsd','hd_perc',"numb_ref",
                     "numb_pred",
                     "numb_tp",
                     "numb_fp",
@@ -126,7 +125,8 @@ class ProcessEvaluation(object):
         thresh_ass=0.5,
         case=True,
         flag_fp_in=True,
-        ignore_missing = False
+        ignore_missing = False, 
+        **kwargs
     ):
         self.data = data
         self.category = category
@@ -145,7 +145,13 @@ class ProcessEvaluation(object):
         self.case = case
         self.flag_fp_in = flag_fp_in
         self.flag_ignore_missing = ignore_missing
+        ### PEDRO ##
+        self.dict_args = {}
+        if 'dict_args' in kwargs:
+            self.dict_args = kwargs['dict_args'] 
+        #check if the required measures are compatibel with problem category
         self.flag_valid = self.check_valid_measures_cat()
+        assert self.flag_valid, f"Some metrics are incorrect for {self.category}"
         if self.flag_valid:
             self.process_data()
             if 'ref_missing' in self.data.keys():
@@ -156,7 +162,7 @@ class ProcessEvaluation(object):
                 self.weights_labels = {}
                 for v in self.data['list_values']:
                     self.weights_labels[v] = 1
-            self.grouped_lab = self.label_aggregation()
+            #self.grouped_lab = self.label_aggregation()
             if self.case:
                 self.get_stats_res()
 
@@ -166,13 +172,11 @@ class ProcessEvaluation(object):
             warnings.warn('No appropriate category chosen')
             return False
         all_measures = self.measures_boundary + self.measures_cal + self.measures_detseg + self.measures_mcc + self.measures_mt + self.measures_overlap + self.measures_pcc
-        print(all_measures, dict_valid[self.category])
+        #print(all_measures, dict_valid[self.category])
         for k in all_measures:
-            print(k)
             if k not in dict_valid[self.category]:
                 warnings.warn( '%s is not a suitable metric for %s' %(k,self.category))
                 flag_valid = False
-                print(flag_valid)
         return flag_valid
 
 
@@ -184,6 +188,7 @@ class ProcessEvaluation(object):
         df_resmt = None
         df_resmcc = None
         df_rescal = None
+        df_mt_complete = None
         if self.category == "InS":
             MLLS = MultiLabelLocSegPairwiseMeasure(
                 pred_loc=data["pred_loc"],
@@ -204,8 +209,10 @@ class ProcessEvaluation(object):
                 list_values=data["list_values"],
                 per_case=self.case,
                 flag_fp_in=self.flag_fp_in,
+                # Pedro
+                dict_args = self.dict_args
             )
-            df_resseg, df_resdet, df_resmt = MLLS.per_label_dict()
+            df_resseg, df_resdet, df_resmt, df_mt_complete = MLLS.per_label_dict()
         elif self.category == "ObD":
             MLDT = MultiLabelLocMeasures(
                 pred_loc=data["pred_loc"],
@@ -245,10 +252,10 @@ class ProcessEvaluation(object):
             )
             df_bin, df_mt = MLPM.per_label_dict()
             df_mcc, df_cal = MLPM.multi_label_res()
-            print(df_bin, 'BIN')
-            print(df_mt, 'MT')
-            print(df_mcc, 'MCC'),
-            print(df_cal, 'CAL')
+            #print(df_bin, 'BIN')
+            #print(df_mt, 'MT')
+            #print(df_mcc, 'MCC'),
+            #print(df_cal, 'CAL')
             if self.category == "ImLC":
                 df_resdet = df_bin
                 df_resseg = None
@@ -265,6 +272,8 @@ class ProcessEvaluation(object):
         self.resmt = df_resmt
         self.resmcc = df_resmcc
         self.rescal = df_rescal
+        self.resmt_complete = df_mt_complete
+     
         return
 
     def complete_missing_cases(self):
@@ -287,7 +296,7 @@ class ProcessEvaluation(object):
                     dict_det = {}
                     dict_mcc['case'] = i + numb_valid
                     for m in self.measures_mcc:
-                        dict_mcc[m] = WORSE[m]
+                                                            dict_mcc[m] = WORSE[m]
                     list_missing_mcc.append(dict_mcc)    
                     for l in self.data['list_values']:
                         dict_seg = {}
@@ -320,7 +329,7 @@ class ProcessEvaluation(object):
             df_miss_seg = pd.DataFrame.from_dict(list_missing_seg)
             df_miss_mcc = pd.DataFrame.from_dict(list_missing_mcc)
             df_miss_mt = pd.DataFrame.from_dict(list_missing_mt)
-            print(self.resseg, ' is resseg before combination')
+            #print(self.resseg, ' is resseg before combination')
             self.resdet = combine_df(self.resdet, df_miss_det)
             self.resseg = combine_df(self.resseg, df_miss_seg)
             self.resmt = combine_df(self.resmt, df_miss_mt)
@@ -328,10 +337,12 @@ class ProcessEvaluation(object):
 
     def label_aggregation(self, option='average',dict_args={}):
         if len(self.data['list_values']) == 1:
-            print('DET', self.resdet,'CAL',self.rescal, 'SEG',self.resseg,'MT', self.resmt,'MCC', self.resmcc)
+            #print('DET', self.resdet,'CAL',self.rescal, 'SEG',self.resseg,'MT', self.resmt,'MCC', self.resmcc)
             df_grouped_all = merge_list_df([self.resdet, self.resseg, self.resmt,self.resmcc, self.rescal])
             return df_grouped_all
+        print("\nself.resdet\n",self.resdet)
         df_all_labels = merge_list_df([self.resdet, self.resseg, self.resmt], on=['label','case'])
+        print("\ndf_all_labels\n",df_all_labels)
         df_all_labels['weights_labels'] = 1
         df_all_labels['prevalence_labels'] = 1 
         for k in self.weights_labels.keys():
@@ -344,14 +355,19 @@ class ProcessEvaluation(object):
         wm2 = lambda x: np.ma.average(np.ma.masked_array(x,np.isnan(x)), weights=df_all_labels.loc[x.index, "weights_labels"])
         wm3 = lambda x: np.ma.average(np.ma.masked_array(x,np.isnan(x)))
         list_measures = self.measures_boundary + self.measures_overlap + self.measures_detseg + self.measures_pcc + self.measures_mt
-        dict_measures = {k:[('prevalence',wm),('weights',wm2),('average',wm3)] for k in list_measures}
+        print("df_all_labels.columns", df_all_labels.columns)
+        print("\nlist_measures\n",list_measures, wm(df_all_labels['froc']),"Index",df_all_labels['froc'].index)
+        print("\nlist_measures\n",list_measures, wm(df_all_labels['froc']), "fro col\n",df_all_labels['froc'])
+        print("\ndf_all_labels['prevalence_labels']\n",df_all_labels['prevalence_labels'])
+        dict_measures = {k:[('prevalence',wm(df_all_labels[k])),('weights',wm2(df_all_labels[k])),('average',wm3(df_all_labels[k]))] for k in list_measures}
+        print("\ndict_measures\n",dict_measures)
         df_grouped_lab = df_all_labels.groupby('case',as_index=False).agg(dict_measures).reset_index()
-        df_grouped_lab.columns = ['_'.join(col).rstrip('_') for col in df_grouped_lab.columns.values
-]
+        print("\ndf_grouped_lab\n",df_grouped_lab)
+        df_grouped_lab.columns = ['_'.join(col).rstrip('_') for col in df_grouped_lab.columns.values]
         
-        print(df_grouped_lab, " grouped lab ")                                             
+        #print(df_grouped_lab, " grouped lab ")                                             
         df_grouped_all = merge_list_df([df_grouped_lab.reset_index(), self.resmcc, self.rescal], on=['case'])
-        print(df_grouped_all, 'grouped all')
+        #print(df_grouped_all, 'grouped all')
         return df_grouped_all
 
     def get_stats_res(self):

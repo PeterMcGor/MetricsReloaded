@@ -28,7 +28,7 @@ Calculating multi-threshold/probabilistic pairwise measures
 
 """
 
-
+import pandas as pd
 import numpy as np
 from MetricsReloaded.utility.utils import (
     CacheFunctionOutput,
@@ -44,6 +44,31 @@ __all__ = [
     "ProbabilityPairwiseMeasures",
 ]
 
+class AT_DEFAULT_VALUES:
+    SPECIFICITY = "value_specificity" 
+    SENSITIVITY = "value_sensitivity" 
+    FPPI = "value_fppi"
+    PPV = "value_ppv"
+    
+    @staticmethod
+    def get_defined_measures():
+        return [AT_DEFAULT_VALUES.SPECIFICITY, 
+                AT_DEFAULT_VALUES.SENSITIVITY, 
+                AT_DEFAULT_VALUES.FPPI, 
+                AT_DEFAULT_VALUES.PPV]
+    
+    @staticmethod
+    def value(defined_measured):
+        assert defined_measured in AT_DEFAULT_VALUES.get_defined_measures(),f"{defined_measured} is invalid. Must be one of the following: {AT_DEFAULT_VALUES.get_defined_measures()}."
+        if defined_measured == AT_DEFAULT_VALUES.SPECIFICITY:
+            return 0.8
+        if defined_measured == AT_DEFAULT_VALUES.SENSITIVITY:
+            return 0.8
+        if defined_measured == AT_DEFAULT_VALUES.FPPI:
+            return 0.8
+        if defined_measured == AT_DEFAULT_VALUES.PPV:
+            return 0.8
+    
 
 class ProbabilityPairwiseMeasures(object):
     def __init__(
@@ -55,16 +80,14 @@ class ProbabilityPairwiseMeasures(object):
         empty=False,
         dict_args={},
     ):
+        self.dict_args = check_at_values(dict_args)
         self.measures_dict = {
-            "sens@ppv": (self.sensitivity_at_ppv, "Sens@PPV"),
-            "ppv@sens": (self.ppv_at_sensitivity, "PPV@Sens"),
-            "sens@spec": (self.sensitivity_at_specificity, "Sens@Spec"),
-            "spec@sens": (self.specificity_at_sensitivity, "Spec@Sens"),
-            "fppi@sens": (
-                self.fppi_at_sensitivity,
-                "FPPI@Sens",
-            ),
-            "sens@fppi": (self.sensitivity_at_fppi, "Sens@FPPI"),
+            "sens@ppv": (self.sensitivity_at_ppv, "Sens@PPV", self.dict_args[AT_DEFAULT_VALUES.PPV]),
+            "ppv@sens": (self.ppv_at_sensitivity, "PPV@Sens", self.dict_args[AT_DEFAULT_VALUES.SENSITIVITY]),
+            "sens@spec": (self.sensitivity_at_specificity, "Sens@Spec", self.dict_args[AT_DEFAULT_VALUES.SPECIFICITY]),
+            "spec@sens": (self.specificity_at_sensitivity, "Spec@Sens", self.dict_args[AT_DEFAULT_VALUES.SENSITIVITY]),
+            "fppi@sens": (self.fppi_at_sensitivity, "FPPI@Sens", self.dict_args[AT_DEFAULT_VALUES.SENSITIVITY]),
+            "sens@fppi": (self.sensitivity_at_fppi, "Sens@FPPI", self.dict_args[AT_DEFAULT_VALUES.FPPI]),
             "auroc": (self.auroc, "AUROC"),
             "ap": (self.average_precision, "AP"),
             "froc": (self.froc, "FROC"),
@@ -74,8 +97,8 @@ class ProbabilityPairwiseMeasures(object):
         self.ref = ref_proba
         self.case = case
         self.flag_empty = empty
-        self.dict_args = dict_args
         self.measures = measures if measures is not None else self.measures_dict
+        self.blob_thrs = [] 
 
     @CacheFunctionOutput
     def fp_thr(self, thresh):
@@ -111,6 +134,9 @@ class ProbabilityPairwiseMeasures(object):
         The default maximum number of thresholds is 1500
         """
         unique_thresh, unique_counts = np.unique(self.pred, return_counts=True)
+        #zero probability is not lesion
+        unique_thresh = unique_thresh[unique_thresh!=0]
+        #print("THRESHolds",unique_thresh,'\n' ,self.pred )
         if len(unique_thresh) < max_number_thresh:
             unique_new_thresh = unique_thresh
         elif np.size(self.ref) < max_number_samples:
@@ -129,20 +155,20 @@ class ProbabilityPairwiseMeasures(object):
                     unique_new_thresh.append(new_thresh)
                     current_count = 0
             unique_new_thresh = np.asarray(unique_new_thresh)
-        unique_new_thresh = np.concatenate(
-            [unique_new_thresh, np.asarray([1 + np.max(unique_thresh)])]
-        )
+        unique_new_thresh = np.concatenate([unique_new_thresh, np.asarray([1 + np.max(unique_thresh)])])
         list_sens = []
         list_spec = []
         list_ppv = []
         list_fppi = []
         unique_new_thresh = np.sort(unique_new_thresh)[::-1]
+        #print('---------unique_new_thresh-----------', unique_new_thresh)
         for val in unique_new_thresh:
             list_sens.append(self.sensitivity_thr(val))
             list_spec.append(self.specificity_thr(val))
             list_ppv.append(self.positive_predictive_values_thr(val))
             list_fppi.append(self.fppi_thr(val))
         list_ppv[0] = 1.0
+        #print('MOVIDAS', unique_new_thresh,'\nSen', list_sens,'\nSPE', list_spec, '\nPPV',list_ppv,'\nFPP', list_fppi)
         return unique_new_thresh, list_sens, list_spec, list_ppv, list_fppi
 
     def __fp_map_thr(self, thresh):
@@ -168,6 +194,8 @@ class ProbabilityPairwiseMeasures(object):
         :return: TP map at specified threshold
         """
         pred_bin = self.pred >= thresh
+        #print("__tp_map_thr\n", thresh,self.ref, '\n',self.pred, '\n')
+        #print(np.asarray((self.ref + pred_bin) > 1.0, dtype=np.float32))
         return np.asarray((self.ref + pred_bin) > 1.0, dtype=np.float32)
 
     def __tn_map_thr(self, thresh):
@@ -177,6 +205,7 @@ class ProbabilityPairwiseMeasures(object):
         :return: TN map at specified threshold
         """
         pred_bin = self.pred >= thresh
+        #print("-----REF????-----", self.ref, self.pred, thresh, pred_bin)
         return np.asarray((self.ref + pred_bin) < 0.5, dtype=np.float32)
 
     def positive_predictive_values_thr(self, thresh):
@@ -187,6 +216,7 @@ class ProbabilityPairwiseMeasures(object):
         """
         if self.flag_empty:
             return -1
+        #print('PPV', thresh, self.tp_thr(thresh), self.fp_thr(thresh))
         return self.tp_thr(thresh) / (self.tp_thr(thresh) + self.fp_thr(thresh))
 
     def specificity_thr(self, thresh):
@@ -195,6 +225,7 @@ class ProbabilityPairwiseMeasures(object):
 
         :return: Specificity at specified threshold
         """
+        #print("---n_neg_ref----", self.n_neg_ref())
         return self.tn_thr(thresh) / self.n_neg_ref()
 
     def sensitivity_thr(self, thresh):
@@ -203,6 +234,7 @@ class ProbabilityPairwiseMeasures(object):
 
         :return: Sensitivity at specified threshold
         """
+        #print("Sensitivity(TPR) averaged by",thresh, self.tp_thr(thresh),self.n_pos_ref())
         return self.tp_thr(thresh) / self.n_pos_ref()
 
     def fppi_thr(self, thresh):
@@ -215,10 +247,12 @@ class ProbabilityPairwiseMeasures(object):
                 )
                 list_sum.append(case_tmp.fp_thr(thresh))
             fppi = np.mean(np.asarray(list_sum))
+            #print("FPPI Mean", fppi)
         else:
-            sum_per_image = np.sum(
-                np.reshape(self.__fp_map_thr(thresh), [-1, self.ref.shape[-1]]), axis=0
-            )
+            #print("self.ref",self.ref)
+            #print("sum_per_image",self.__fp_map_thr(thresh))
+            sum_per_image = np.sum(np.reshape(self.__fp_map_thr(thresh), [-1, self.ref.shape[-1]]), axis=0)
+            #print("Pre FPPI", sum_per_image, np.mean(sum_per_image))
             fppi = np.mean(sum_per_image)
         return fppi
 
@@ -272,6 +306,7 @@ class ProbabilityPairwiseMeasures(object):
         Comparing and combining algorithms for computer-aided detection of pulmonary nodules in computed tomography
         scans: the ANODE09 study. Medical image analysis 14, 6 (2010), 707–722.
         """
+        #print('-----FROC------')
         (
             unique_thresh,
             list_sens,
@@ -296,9 +331,9 @@ class ProbabilityPairwiseMeasures(object):
             array_fppi_new = array_fppi
             array_sens_new = array_sens
         else:
-            ind = np.where(added_fppi < max_fppi)
-            added_fppi_fin = added_fppi[ind:]
-            added_sens_fin = added_sens[ind:]
+            ind = np.where(added_fppi <= max_fppi)[0]
+            added_fppi_fin = added_fppi[ind[-1]:]
+            added_sens_fin = added_sens[ind[-1]:]
             array_fppi_new = np.concatenate([array_fppi, added_fppi_fin])
             array_sens_new = np.concatenate([array_sens, added_sens_fin])
         
@@ -309,9 +344,11 @@ class ProbabilityPairwiseMeasures(object):
         # top_rect = np.sum(array_sens[1:] * diff_fppi)
         # diff_rect = np.sum(diff_sens * diff_fppi)
         # froc = bottom_rect + diff_rect * 0.5
+        #print("Froc points\n", array_sens_new,'\n',array_fppi_new)
         froc = trapezoidal_integration(array_fppi_new, array_sens_new)
+        #print("FINAL FROC", froc)
         return froc
-
+    
     def average_precision(self):
         """
         Average precision calculation using trapezoidal integration. This integrates
@@ -332,7 +369,7 @@ class ProbabilityPairwiseMeasures(object):
             list_fppi,
         ) = self.all_multi_threshold_values()
 
-        print("From AP", list_sens, list_ppv)
+        #print("From AP", list_sens, list_ppv)
         ap = trapezoidal_integration(np.asarray(list_sens), np.asarray(list_ppv))
         # diff_ppv = np.asarray(list_ppv[1:]) - np.asarray(list_ppv[:-1])
         # diff_sens = np.asarray(list_sens[1:]) - np.asarray(list_sens[:-1])
@@ -352,10 +389,10 @@ class ProbabilityPairwiseMeasures(object):
 
         :return: sensitivity at specificity threshold
         """
-        if "value_specificity" in self.dict_args.keys():
-            value_spec = self.dict_args["value_specificity"]
-        else:
-            value_spec = 0.8
+        #if "value_specificity" in self.dict_args.keys():
+        value_spec = self.dict_args[AT_DEFAULT_VALUES.SPECIFICITY]
+        #else:
+        #    value_spec = 0.8
         (
             unique_thresh,
             list_sens,
@@ -378,10 +415,10 @@ class ProbabilityPairwiseMeasures(object):
 
         :return: specificity at sensitivity threshold
         """
-        if "value_sensitivity" in self.dict_args.keys():
-            value_sens = self.dict_args["value_sensitivity"]
-        else:
-            value_sens = 0.8
+        #if "value_sensitivity" in self.dict_args.keys():
+        value_sens = self.dict_args[AT_DEFAULT_VALUES.SENSITIVITY]
+        #else:
+        #    value_sens = 0.8
         (
             unique_thresh,
             list_sens,
@@ -404,10 +441,10 @@ class ProbabilityPairwiseMeasures(object):
 
         :return: fppi at sensitivity threshold
         """
-        if "value_sensitivity" in self.dict_args.keys():
-            value_sens = self.dict_args["value_sensitivity"]
-        else:
-            value_sens = 0.8
+        #if "value_sensitivity" in self.dict_args.keys():
+        value_sens = self.dict_args[AT_DEFAULT_VALUES.SENSITIVITY]
+        #else:
+        #value_sens = 0.8
         (
             unique_thresh,
             list_sens,
@@ -430,10 +467,10 @@ class ProbabilityPairwiseMeasures(object):
 
         :return: sensitivity at fppi threshold
         """
-        if "value_fppi" in self.dict_args.keys():
-            value_fppi = self.dict_args["value_fppi"]
-        else:
-            value_fppi = 0.8
+        #if "value_fppi" in self.dict_args.keys():
+        value_fppi = self.dict_args[AT_DEFAULT_VALUES.FPPI]
+        #else:
+        #value_fppi = 0.8
         (
             unique_thresh,
             list_sens,
@@ -456,10 +493,10 @@ class ProbabilityPairwiseMeasures(object):
 
         :return: sensitivity at PPV threshold
         """
-        if "value_ppv" in self.dict_args.keys():
-            value_ppv = self.dict_args["value_ppv"]
-        else:
-            value_ppv = 0.8
+        #if "value_ppv" in self.dict_args.keys():
+        value_ppv = self.dict_args[AT_DEFAULT_VALUES.PPV]
+        #else:
+        #value_ppv = 0.8
         (
             unique_thresh,
             list_sens,
@@ -482,10 +519,11 @@ class ProbabilityPairwiseMeasures(object):
 
         :return: PPV at sensitivity threshold
         """
-        if "value_sensitivity" in self.dict_args.keys():
-            value_sens = self.dict_args["value_sensitivity"]
-        else:
-            value_sens = 0.8
+        #if "value_sensitivity" in self.dict_args.keys():
+        value_sens = self.dict_args[AT_DEFAULT_VALUES.SENSITIVITY]
+        #else:
+            #value_sens = 0.8
+        #print("SENSITIVITY VALUE", value_sens)
         (
             unique_thresh,
             list_sens,
@@ -500,6 +538,7 @@ class ProbabilityPairwiseMeasures(object):
         # value_max = np.max(ppv_valid)
         value_max = max_x_at_y_more(list_ppv, list_sens, value_sens)
         return value_max
+    
 
     def to_dict_meas(self, fmt="{:.4f}"):
         """
@@ -509,5 +548,23 @@ class ProbabilityPairwiseMeasures(object):
         for key in self.measures:
             result = self.measures_dict[key][0]()
             #result_dict[key] = fmt.format(result)
+            # the @ measures include the at value in the third tuple's position
+            if len(self.measures_dict[key]) > 2:
+                key = key+'='+str(self.measures_dict[key][2])
             result_dict[key] = result
         return result_dict  # trim the last comma
+    
+    def all_multi_threshold_results(self,):
+        unique_thresh, list_sens, list_spec,list_ppv, list_fppi = self.all_multi_threshold_values()
+        assert len(unique_thresh) == len(list_sens) == len(list_spec) == len(list_ppv), "Each threshold is not paired with themetrics"
+        return pd.DataFrame(np.asarray([unique_thresh, list_sens, list_spec, list_ppv, list_fppi]).T, 
+                            columns=['Dec_thr', 'Sensitivity', 'Specificity', 'PPV', 'FPPI'])
+        
+        
+        
+    
+def check_at_values(dict_args):
+    for measure in AT_DEFAULT_VALUES.get_defined_measures():
+        if measure not in dict_args:
+            dict_args[measure] = AT_DEFAULT_VALUES.value(measure)
+    return dict_args 

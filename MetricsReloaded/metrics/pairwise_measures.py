@@ -97,7 +97,7 @@ class MultiClassPairwiseMeasures(object):
             weights = self.dict_args["ec_costs"]
         else:
             weights = priorbased_weights
-        print(weights, prior_matrix, rmatrix)
+        #print(weights, prior_matrix, rmatrix)
         ec = np.sum(prior_matrix * weights * rmatrix)
         return ec
 
@@ -281,6 +281,10 @@ class BinaryPairwiseMeasures(object):
 
         self.pred = pred
         self.ref = ref
+        # this could be more efficient by choosing
+        self.pred_center_of_mass = ndimage.center_of_mass(self.pred)
+        self.ref_center_of_mass = ndimage.center_of_mass(self.ref)
+        
         self.flag_empty = empty
         self.flag_empty_pred = False
         self.flag_empty_ref = False
@@ -707,6 +711,7 @@ class BinaryPairwiseMeasures(object):
         :return: fbeta value
 
         """
+        #print("----F-BETA------")
         if "beta" in self.dict_args.keys():
             beta = self.dict_args["beta"]
         else:
@@ -717,7 +722,7 @@ class BinaryPairwiseMeasures(object):
         denominator = (
             np.square(beta) * self.positive_predictive_values() + self.recall()
         )
-        print(numerator, denominator, self.fn(), self.tp(), self.fp())
+        #print(numerator, denominator, self.fn(), self.tp(), self.fp())
         if np.isnan(denominator):
             if self.fp() + self.fn() > 0:
                 return 0
@@ -837,14 +842,14 @@ class BinaryPairwiseMeasures(object):
         :return: Euclidean distance between centre of mass when reference and prediction not empty
         -1 otherwise
         """
-        print("pred sum ", self.n_pos_pred(), "ref_sum ", self.n_pos_ref())
+        #print("pred sum ", self.n_pos_pred(), "ref_sum ", self.n_pos_ref())
         if self.flag_empty_pred or self.flag_empty_ref:
             return -1
         else:
             com_ref = compute_center_of_mass(self.ref)
             com_pred = compute_center_of_mass(self.pred)
 
-            print(com_ref, com_pred)
+            #print(com_ref, com_pred)
             if self.pixdim is not None:
                 com_dist = np.sqrt(
                     np.dot(
@@ -1004,7 +1009,7 @@ Pattern Recognition. 15334–15342.
                 np.zeros_like(border_pred),
             )
         )
-        print(intersect, union)
+        #print(intersect, union)
         return intersect / union
         # return np.sum(border_ref * border_pred) / (
         #     np.sum(border_ref) + np.sum(border_pred)
@@ -1091,6 +1096,7 @@ Pattern Recognition. 15334–15342.
             np.sum(ref_border_dist) / np.sum(pred_border)
             + np.sum(pred_border_dist) / np.sum(ref_border)
         )
+        """
         print(
             np.sum(ref_border_dist) / np.sum(pred_border),
             np.sum(pred_border_dist) / np.sum(ref_border),
@@ -1099,6 +1105,7 @@ Pattern Recognition. 15334–15342.
             np.sum(pred_border_dist),
             np.sum(ref_border_dist),
         )
+        """
         hausdorff_distance = np.max([np.max(ref_border_dist), np.max(pred_border_dist)])
         hausdorff_distance_perc = np.max(
             [
@@ -1106,6 +1113,7 @@ Pattern Recognition. 15334–15342.
                 np.percentile(pred_border_dist[self.ref + self.pred > 0], q=perc),
             ]
         )
+        """
         print(
             ref_border_dist[self.ref + self.pred > 0],
             pred_border_dist[self.ref + self.pred > 0],
@@ -1114,6 +1122,7 @@ Pattern Recognition. 15334–15342.
             len(ref_border_dist[self.ref + self.pred > 0]),
             len(pred_border_dist[self.ref + self.pred > 0]),
         )
+        """
 
         return hausdorff_distance, average_distance, hausdorff_distance_perc, masd
 
@@ -1177,6 +1186,8 @@ Pattern Recognition. 15334–15342.
                 result = self.measures_dict[key][0](self.measures_dict[key][2])
             #result_dict[key] = fmt.format(result)
             result_dict[key] = result
+        result_dict['ref_com'] = self.ref_center_of_mass
+        result_dict['pred_com'] = self.pred_center_of_mass
         return result_dict  # trim the last comma
 
     

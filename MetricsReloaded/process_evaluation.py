@@ -48,6 +48,7 @@ def parse_options(string_options):
         key = f.split(":")[0]
         value = f.split(":")[1]
         dict_args[key] = np.float(value)
+        di
     return dict_args
 
 
